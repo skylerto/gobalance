@@ -1,43 +1,69 @@
 package main
 
 import (
-  "log"
-  "net"
-  "strings"
-  "github.com/get-ion/ion"
-  "github.com/get-ion/ion/context"
+  "errors"
+	"net"
+  "net/http"
+  "encoding/json"
 )
 
-// User bind struct
-type IP struct {
-  ip string `json:"ip"`
+type Address struct {
+  Ip string `json:"ip"`
 }
 
-// Get preferred outbound ip of this machine
-func GetOutboundIP() string {
-    conn, err := net.Dial("udp", "8.8.8.8:80")
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer conn.Close()
+func externalIP() (string, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue // interface down
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue // loopback interface
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return "", err
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			ip = ip.To4()
+			if ip == nil {
+				continue // not an ipv4 address
+			}
+			return ip.String(), nil
+		}
+	}
+	return "", errors.New("are you connected to the network?")
+}
 
-    localAddr := conn.LocalAddr().String()
-    idx := strings.LastIndex(localAddr, ":")
+func application(w http.ResponseWriter, r *http.Request) {
+  ip, err := externalIP()
+  addr := Address{ip}
 
-    return localAddr[0:idx]
+
+  js, err := json.Marshal(addr)
+  if err != nil {
+    http.Error(w, err.Error(), http.StatusInternalServerError)
+    return
   }
 
+  w.Header().Set("Content-Type", "application/json")
+  w.Write(js)
+}
+
 func main() {
-  app := ion.New()
-
-  // Method:    GET
-  // Resource:  http://localhost:8080
-  app.Get("/", func(ctx context.Context) {
-    addr := GetOutboundIP()
-    ctx.StatusCode(ion.StatusOK)
-    ctx.JSON(map[string]string{"ip": addr})
-  })
-
-  // Start the server using a network address and block.
-  app.Run(ion.Addr(":8080"))
+  http.HandleFunc("/", application)
+  http.ListenAndServe(":8080", nil)
 }
