@@ -52,7 +52,6 @@ func application(w http.ResponseWriter, r *http.Request) {
   ip, err := externalIP()
   addr := Address{ip}
 
-
   js, err := json.Marshal(addr)
   if err != nil {
     http.Error(w, err.Error(), http.StatusInternalServerError)
