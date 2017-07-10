@@ -1,11 +1,17 @@
 package main
 
 import (
-  "fmt"
   "log"
   "net"
   "strings"
+  "github.com/get-ion/ion"
+  "github.com/get-ion/ion/context"
 )
+
+// User bind struct
+type IP struct {
+  ip string `json:"ip"`
+}
 
 // Get preferred outbound ip of this machine
 func GetOutboundIP() string {
@@ -22,5 +28,16 @@ func GetOutboundIP() string {
   }
 
 func main() {
-  fmt.Println(GetOutboundIP())
+  app := ion.New()
+
+  // Method:    GET
+  // Resource:  http://localhost:8080
+  app.Get("/", func(ctx context.Context) {
+    addr := GetOutboundIP()
+    ctx.StatusCode(ion.StatusOK)
+    ctx.JSON(map[string]string{"ip": addr})
+  })
+
+  // Start the server using a network address and block.
+  app.Run(ion.Addr(":8080"))
 }
